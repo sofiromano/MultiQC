@@ -5,7 +5,6 @@
 #### Have a look at Kallisto for a simpler example.     ####
 ############################################################
 import dataclasses
-import io
 import json
 import logging
 import math
@@ -14,19 +13,17 @@ import re
 import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, TypedDict, Union
+from typing import Any, Literal, TypedDict
 
 from multiqc import config, report
 from multiqc.base_module import BaseMultiqcModule, ModuleNoSamplesFound, SampleGroupingConfig
 from multiqc.plots import bargraph, heatmap, linegraph, table
 from multiqc.plots.linegraph import LinePlotConfig, Series
 from multiqc.plots.table_object import ColumnKey, InputRow, SampleName
-from multiqc.types import Anchor, LoadedFileDict
+from multiqc.types import Anchor, LoadedFileDict, SectionAlert
 from multiqc.utils.material_icons import get_material_icon
 
 log = logging.getLogger(__name__)
-
-VERSION_REGEX = r"FastQC\t([\d\.]+)"
 
 
 @dataclasses.dataclass
@@ -43,8 +40,9 @@ class Metrics:
 
 class MultiqcModule(BaseMultiqcModule):
     """
-    FastQC generates an HTML report which is what most people use when
-    they run the program. However, it also helpfully generates a file
+    FastQC and [Falco](https://github.com/smithlabcode/falco) (a high-performance
+    drop-in replacement) generate an HTML report which is what most people use when
+    they run the program. However, they also helpfully generate a file
     called `fastqc_data.txt` which is relatively easy to parse.
 
     A typical run will produce the following files:
@@ -79,7 +77,7 @@ class MultiqcModule(BaseMultiqcModule):
     ```yaml
     sp:
       fastqc/data:
-        fn: "fastqc_data.txt"
+        fn: "*fastqc_data.txt"
       fastqc/zip:
         fn: "*_fastqc.zip"
     ```
@@ -194,16 +192,19 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="FastQC",
             anchor=Anchor("fastqc"),
             href="http://www.bioinformatics.babraham.ac.uk/projects/fastqc/",
             info="Quality control tool for high throughput sequencing data",
             # No publication / DOI // doi=
+            license="GNU General Public License v3.0",
+            license_url="https://github.com/s-andrews/FastQC/blob/master/LICENSE",
         )
 
-        self.fastqc_data: Dict[SampleName, Any] = dict()
-        self.order_of_duplication_levels: List[Union[float, str]] = []
+        self.fastqc_data: dict[SampleName, Any] = {}
+        self.order_of_duplication_levels: list[float | str] = []
+        self._tools_found: set[str] = set()
 
         # Find and parse unzipped FastQC reports
         f: LoadedFileDict[str]
@@ -221,11 +222,10 @@ class MultiqcModule(BaseMultiqcModule):
         # Find and parse zipped FastQC reports
         for f in self.find_log_files("fastqc/zip", filecontents=False):
             fn = f["fn"]
-            if fn.endswith("_fastqc.zip"):
-                fn = fn[:-11]
+            fn = fn.removesuffix("_fastqc.zip")
             s_name = SampleName(self.clean_s_name(fn, f))
             # Skip if we already have this report - parsing zip files is slow
-            if s_name in self.fastqc_data.keys():
+            if s_name in self.fastqc_data:
                 log.debug(f"Skipping '{f['fn']}' as already parsed '{s_name}'")
                 continue
             try:
@@ -252,12 +252,36 @@ class MultiqcModule(BaseMultiqcModule):
                     s_name = self.parse_fastqc_report(r_data, s_name=s_name, f=f)
                     self.add_data_source(f, str(s_name))
             except KeyError:
-                log.warning(f"Error - can't find fastqc_raw_data.txt in {f}")
+                log.warning(f"Error - can't find fastqc_data.txt in {f}")
 
         # Filter to strip out ignored sample names
         self.fastqc_data = self.ignore_samples(self.fastqc_data)
         if len(self.fastqc_data) == 0:
             raise ModuleNoSamplesFound
+
+        # Dynamic module naming based on discovered tools
+        if self._tools_found == {"Falco"}:
+            self.name = "Falco"
+            self.anchor = Anchor("falco")
+            self.href = ["https://github.com/smithlabcode/falco"]
+            self.info = "A C++ drop-in replacement for FastQC."
+            self.intro = self._get_intro()
+            # Clean up the software versions table: remove the "FastQC" group
+            # that was auto-created because self.name was still "FastQC" during parsing
+            if "FastQC" in report.software_versions:
+                falco_versions = report.software_versions.get("FastQC", {}).get("Falco", [])
+                if falco_versions:
+                    report.software_versions.setdefault("Falco", {})["Falco"] = falco_versions
+                del report.software_versions["FastQC"]
+        elif "Falco" in self._tools_found and "FastQC" in self._tools_found:
+            self.name = "FastQC / Falco"
+            self.href = [
+                "http://www.bioinformatics.babraham.ac.uk/projects/fastqc/",
+                "https://github.com/smithlabcode/falco",
+            ]
+            self.info = "Quality control tools for high throughput sequencing data."
+            self.intro = self._get_intro()
+        self._tools_found = None
 
         log.info(f"Found {len(self.fastqc_data)} reports")
 
@@ -278,7 +302,7 @@ class MultiqcModule(BaseMultiqcModule):
         self.fastqc_general_stats()
 
         # Collect statuses for status bars
-        statuses: Dict[str, Dict[SampleName, str]] = dict()
+        statuses: dict[str, dict[SampleName, str]] = {}
         for s_name in self.fastqc_data:
             for section, status in self.fastqc_data[s_name]["statuses"].items():
                 try:
@@ -300,7 +324,7 @@ class MultiqcModule(BaseMultiqcModule):
         self.status_heatmap()
 
         # Write the summary stats to a file
-        dump_data: Dict[SampleName, Dict[str, Any]] = dict()
+        dump_data: dict[SampleName, dict[str, Any]] = {}
         for s_name in self.fastqc_data:
             dump_data[s_name] = self.fastqc_data[s_name]["basic_statistics"]
             dump_data[s_name].update(self.fastqc_data[s_name]["statuses"])
@@ -326,16 +350,16 @@ class MultiqcModule(BaseMultiqcModule):
         if s_name in self.fastqc_data:
             log.debug(f"Duplicate sample name found! Overwriting: {s_name}")
 
-        self.fastqc_data[s_name] = {"statuses": dict()}
+        self.fastqc_data[s_name] = {"statuses": {}}
 
         # Parse the report
         section = None
         s_headers = None
         for line in file_contents.splitlines():
-            if line.startswith("##FastQC"):
-                version_match = re.search(VERSION_REGEX, line)
-                if version_match:
-                    self.add_software_version(version_match.group(1), s_name)
+            m = re.search(r"##(FastQC|Falco)\t([\d\.]+)", line)
+            if m:
+                self.add_software_version(m.group(2), s_name, software_name=m.group(1))
+                self._tools_found.add(m.group(1))
             if line == ">>END_MODULE":
                 section = None
                 s_headers = None
@@ -359,11 +383,11 @@ class MultiqcModule(BaseMultiqcModule):
                         if s_headers[1] == "Relative count":
                             s_headers[1] = "Percentage of total"
                         s_headers = [s.lower().replace(" ", "_") for s in s_headers]
-                        self.fastqc_data[s_name][section] = list()
+                        self.fastqc_data[s_name][section] = []
 
                 elif s_headers is not None:
                     s = line.split("\t")
-                    row: Dict[str, Any] = dict()
+                    row: dict[str, Any] = {}
                     for i, v in enumerate(s):
                         v.replace("NaN", "0")
                         try:
@@ -374,7 +398,7 @@ class MultiqcModule(BaseMultiqcModule):
                     self.fastqc_data[s_name][section].append(row)
                     # Special case - need to remember order of duplication keys
                     if section == "sequence_duplication_levels":
-                        level: Union[float, str]
+                        level: float | str
                         try:
                             level = float(s[0])
                         except ValueError:
@@ -393,7 +417,7 @@ class MultiqcModule(BaseMultiqcModule):
 
         # Calculate the average sequence length (Basic Statistics gives a range)
         total_read_count = sum(d["count"] for d in sequence_length_distributions)
-        median: Optional[int] = None
+        median: int | None = None
         running_read_count = 0
         running_bp_sum = 0
         for d in sequence_length_distributions:
@@ -416,7 +440,7 @@ class MultiqcModule(BaseMultiqcModule):
         table at the top of the report"""
 
         # Prep the data
-        data_by_sample: Dict[SampleName, Metrics] = dict()
+        data_by_sample: dict[SampleName, Metrics] = {}
         for s_name, sample_data in self.fastqc_data.items():
             bs = sample_data["basic_statistics"]
             # Samples with 0 reads and reports with some skipped sections might be missing things here
@@ -454,7 +478,7 @@ class MultiqcModule(BaseMultiqcModule):
             # Zero reads
             hide_seq_length = True
 
-        def _summarize_statues(merged_row: InputRow, group_s_names: List[Tuple[Optional[str], SampleName, SampleName]]):
+        def _summarize_statues(merged_row: InputRow, group_s_names: list[tuple[str | None, SampleName, SampleName]]):
             # Add count of fail statuses
             _num_statuses = 0
             _num_fails = 0
@@ -550,12 +574,12 @@ class MultiqcModule(BaseMultiqcModule):
         }
 
         # Calculate the number of unique and duplicate reads if we can
-        data_by_sample: Dict[str, Dict[str, int]] = dict()
+        data_by_sample: dict[str, dict[str, int]] = {}
         has_dups = False
         has_total = False
         for s_name, sd in self.fastqc_data.items():
             pd = sd["basic_statistics"]
-            data_by_sample[s_name] = dict()
+            data_by_sample[s_name] = {}
             try:
                 data_by_sample[s_name]["Duplicate Reads"] = int(
                     ((100.0 - float(pd["total_deduplicated_percentage"])) / 100.0) * pd["Total Sequences"]
@@ -571,7 +595,7 @@ class MultiqcModule(BaseMultiqcModule):
                 has_total = True
 
         # Configure the cats and config according to what we found
-        pcats: List[str] = list()
+        pcats: list[str] = []
         duptext = ""
         if has_total:
             pcats.append("Total Sequences")
@@ -606,10 +630,10 @@ class MultiqcModule(BaseMultiqcModule):
             plot=bargraph.plot(data_by_sample, pcats, pconfig),
         )
 
-    def sequence_quality_plot(self, section_statuses: Dict[SampleName, str]):
+    def sequence_quality_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the phred quality score plot"""
 
-        data_by_sample: Dict[str, Dict[int, float]] = dict()
+        data_by_sample: dict[str, dict[int, float]] = {}
         for s_name, sd in self.fastqc_data.items():
             if sd.get("per_base_sequence_quality") is None:
                 continue
@@ -618,10 +642,10 @@ class MultiqcModule(BaseMultiqcModule):
             }
         if len(data_by_sample) == 0:
             log.debug("sequence_quality not found in FastQC reports")
-            return None
+            return
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
@@ -664,20 +688,20 @@ class MultiqcModule(BaseMultiqcModule):
             statuses=status_dict if section_statuses else None,
         )
 
-    def per_seq_quality_plot(self, section_statuses: Dict[SampleName, str]):
+    def per_seq_quality_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the per sequence quality score plot"""
 
-        data_by_sample: Dict[str, Dict[int, float]] = dict()
+        data_by_sample: dict[str, dict[int, float]] = {}
         for s_name, sd in self.fastqc_data.items():
             if sd.get("per_sequence_quality_scores") is None:
                 continue
             data_by_sample[s_name] = {d["quality"]: d["count"] for d in sd["per_sequence_quality_scores"]}
         if len(data_by_sample) == 0:
             log.debug("per_seq_quality not found in FastQC reports")
-            return None
+            return
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
@@ -718,7 +742,7 @@ class MultiqcModule(BaseMultiqcModule):
     def sequence_content_plot(self):
         """Create the epic HTML for the FastQC sequence content heatmap"""
 
-        data_by_sample: Dict[str, Dict[int, Dict[str, int]]] = dict()
+        data_by_sample: dict[str, dict[int, dict[str, int]]] = {}
         for s_name in sorted(self.fastqc_data.keys()):
             if self.fastqc_data[s_name].get("per_base_sequence_content") is None:
                 continue
@@ -738,7 +762,7 @@ class MultiqcModule(BaseMultiqcModule):
 
         if len(data_by_sample) == 0:
             log.debug("sequence_content not found in FastQC reports")
-            return None
+            return
 
         # Generate unique plot ID, needed in mqc_export_selectplots
         anchor = report.save_htmlid(f"{self.anchor}_per_base_sequence_content_plot")
@@ -802,18 +826,18 @@ class MultiqcModule(BaseMultiqcModule):
             content=html,
         )
 
-    def gc_content_plot(self, section_statuses: Dict[SampleName, str]):
+    def gc_content_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the FastQC GC content plot"""
 
-        data_by_sample: Dict[str, Dict[int, float]] = dict()
-        data_norm_by_sample: Dict[str, Dict[int, float]] = dict()
+        data_by_sample: dict[str, dict[int, float]] = {}
+        data_norm_by_sample: dict[str, dict[int, float]] = {}
         for s_name, sd in self.fastqc_data.items():
             if sd.get("per_sequence_gc_content") is None:
                 continue
 
             data_by_sample[s_name] = {d["gc_content"]: d["count"] for d in sd["per_sequence_gc_content"]}
-            data_norm_by_sample[s_name] = dict()
-            total = sum([c for c in data_by_sample[s_name].values()])
+            data_norm_by_sample[s_name] = {}
+            total = sum(list(data_by_sample[s_name].values()))
             for gc, count in data_by_sample[s_name].items():
                 if total == 0:
                     data_norm_by_sample[s_name][gc] = 0
@@ -821,10 +845,10 @@ class MultiqcModule(BaseMultiqcModule):
                     data_norm_by_sample[s_name][gc] = (count / total) * 100
         if len(data_by_sample) == 0:
             log.debug("per_sequence_gc_content not found in FastQC reports")
-            return None
+            return
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
@@ -847,7 +871,7 @@ class MultiqcModule(BaseMultiqcModule):
         }
 
         # Try to find and plot a theoretical GC line
-        theoretical_gc: Optional[List[Tuple[float, float]]] = None
+        theoretical_gc: list[tuple[float, float]] | None = None
         theoretical_gc_raw = None
         theoretical_gc_name = None
         for f in self.find_log_files("fastqc/theoretical_gc"):
@@ -864,13 +888,13 @@ class MultiqcModule(BaseMultiqcModule):
                 if not os.path.isfile(tgc_path):
                     tgc_path = tgc
                 try:
-                    with io.open(tgc_path, "r", encoding="utf-8") as f:
+                    with open(tgc_path, "r", encoding="utf-8") as f:
                         theoretical_gc_raw = f.read()
-                except IOError:
+                except OSError:
                     log.warning(f"Couldn't open FastQC Theoretical GC Content file {tgc_path}")
                     theoretical_gc_raw = None
         if theoretical_gc_raw is not None:
-            theoretical_gc = list()
+            theoretical_gc = []
             for line in theoretical_gc_raw.splitlines():
                 if "# FastQC theoretical GC content curve:" in line:
                     theoretical_gc_name = line[39:]
@@ -933,10 +957,10 @@ class MultiqcModule(BaseMultiqcModule):
             statuses=status_dict if section_statuses else None,
         )
 
-    def n_content_plot(self, section_statuses: Dict[SampleName, str]):
+    def n_content_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the per base N content plot"""
 
-        data_by_sample: Dict[str, Dict[int, int]] = dict()
+        data_by_sample: dict[str, dict[int, int]] = {}
         for s_name, sd in self.fastqc_data.items():
             if sd.get("per_base_n_content") is None:
                 continue
@@ -945,10 +969,10 @@ class MultiqcModule(BaseMultiqcModule):
             }
         if len(data_by_sample) == 0:
             log.debug("per_base_n_content not found in FastQC reports")
-            return None
+            return
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
@@ -992,11 +1016,11 @@ class MultiqcModule(BaseMultiqcModule):
             statuses=status_dict if section_statuses else None,
         )
 
-    def seq_length_dist_plot(self, section_statuses: Dict[SampleName, str]):
+    def seq_length_dist_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the Sequence Length Distribution plot"""
 
-        cnt_by_range_by_sample: Dict[str, Dict[int, int]] = dict()
-        all_ranges_across_samples: Set[int] = set()
+        cnt_by_range_by_sample: dict[str, dict[int, int]] = {}
+        all_ranges_across_samples: set[int] = set()
         only_single_length: bool = True
         for s_name, sd in self.fastqc_data.items():
             if sd.get("sequence_length_distribution") is None:
@@ -1011,10 +1035,10 @@ class MultiqcModule(BaseMultiqcModule):
             all_ranges_across_samples.update(sample_ranges_set)
         if len(cnt_by_range_by_sample) == 0:
             log.debug("sequence_length_distribution not found in FastQC reports")
-            return None
+            return
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
@@ -1027,7 +1051,7 @@ class MultiqcModule(BaseMultiqcModule):
             self.add_section(
                 name="Sequence Length Distribution",
                 anchor="fastqc_sequence_length_distribution",
-                content=f'<div class="alert alert-info">{desc}</div>',
+                alerts=SectionAlert(message=desc),
                 statuses=status_dict if section_statuses else None,
             )
         else:
@@ -1049,14 +1073,14 @@ class MultiqcModule(BaseMultiqcModule):
                 statuses=status_dict if section_statuses else None,
             )
 
-    def seq_dup_levels_plot(self, section_statuses: Dict[SampleName, str]):
+    def seq_dup_levels_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the Sequence Duplication Levels plot"""
 
-        data: Dict[SampleName, Dict[Union[float, str], Any]] = dict()
+        data: dict[SampleName, dict[float | str, Any]] = {}
         max_dup_val = 0
         for s_name in self.fastqc_data:
             try:
-                thisdata: Dict[Union[float, str], Union[float, str]] = {}
+                thisdata: dict[float | str, float | str] = {}
                 for d in self.fastqc_data[s_name]["sequence_duplication_levels"]:
                     thisdata[d["duplication_level"]] = d["percentage_of_total"]
                     max_dup_val = max(max_dup_val, d["percentage_of_total"])
@@ -1070,10 +1094,10 @@ class MultiqcModule(BaseMultiqcModule):
                 pass
         if len(data) == 0:
             log.debug("sequence_length_distribution not found in FastQC reports")
-            return None
+            return
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
@@ -1132,9 +1156,9 @@ class MultiqcModule(BaseMultiqcModule):
             total_overrepresented: float
             top_overrepresented: float
             remaining_overrepresented: float
-            overrepresented_sequences: List[str]
+            overrepresented_sequences: list[str]
 
-        data_by_sample: Dict[SampleName, Metrics] = dict()
+        data_by_sample: dict[SampleName, Metrics] = {}
         # Count the number of samples where a sequence is overrepresented
         overrep_by_sample: Counter[str] = Counter()
         overrep_total_cnt: Counter[str] = Counter()
@@ -1162,13 +1186,12 @@ class MultiqcModule(BaseMultiqcModule):
                         "overrepresented_sequences": [],
                     }
                 else:
-                    if s_name in data_by_sample:
-                        del data_by_sample[s_name]
+                    data_by_sample.pop(s_name, None)
                     log.debug(f"Couldn't find data for {s_name}, invalid Key")
 
         if all(len(data_by_sample.get(s_name, {})) == 0 for s_name in self.fastqc_data):
             log.debug("overrepresented_sequences not found in FastQC reports")
-            return None
+            return
 
         cats = {
             "top_overrepresented": {"name": "Top overrepresented sequence"},
@@ -1188,10 +1211,16 @@ class MultiqcModule(BaseMultiqcModule):
         }
 
         plot = None
-        content = None
+        alerts: SectionAlert | None = None
         # Check if any samples have more than 1% overrepresented sequences, else don't make plot.
         if max([x["total_overrepresented"] for x in data_by_sample.values()]) < 1:
-            content = f'<div class="alert alert-info">{len(data_by_sample)} samples had less than 1% of reads made up of overrepresented sequences</div>'
+            alerts = SectionAlert(
+                message=(
+                    f"{len(data_by_sample)} sample{'s' if len(data_by_sample) != 1 else ''} had less than 1% "
+                    "of reads made up of overrepresented sequences."
+                ),
+                affected_samples=[str(s_name) for s_name in sorted(data_by_sample)],
+            )
         else:
             plot = bargraph.plot(data_by_sample, cats, pconfig)
 
@@ -1222,7 +1251,7 @@ class MultiqcModule(BaseMultiqcModule):
             but doesn't appear at the start of the file for some reason could be missed by this module._
             """,
             plot=plot,
-            content=content or "",
+            alerts=alerts,
         )
 
         # Add a table of the top overrepresented sequences
@@ -1237,7 +1266,7 @@ class MultiqcModule(BaseMultiqcModule):
             top_seqs = overrep_by_sample.most_common(top_n)
         else:
             top_seqs = overrep_total_cnt.most_common(top_n)
-        table_data: Dict[str, Dict[str, Any]] = {
+        table_data: dict[str, dict[str, Any]] = {
             seq: {
                 "sequence": seq,
                 "total_percent": overrep_total_pct[seq],
@@ -1300,10 +1329,10 @@ class MultiqcModule(BaseMultiqcModule):
             ),
         )
 
-    def adapter_content_plot(self, section_statuses: Dict[SampleName, str]):
+    def adapter_content_plot(self, section_statuses: dict[SampleName, str]):
         """Create the HTML for the FastQC adapter plot"""
 
-        pct_by_pos_by_sample: Dict[str, Dict[int, int]] = dict()
+        pct_by_pos_by_sample: dict[str, dict[int, int]] = {}
         for s_name, data_by_sample in self.fastqc_data.items():
             if data_by_sample.get("adapter_content") is None:
                 continue
@@ -1317,22 +1346,24 @@ class MultiqcModule(BaseMultiqcModule):
                         pct_by_pos_by_sample.setdefault(k, {})[pos] = percent
         if len(pct_by_pos_by_sample) == 0:
             log.debug("adapter_content not found in FastQC reports")
-            return None
+            return
 
         # Lots of these datasets will be all zeros.
         # Only take datasets with > 0.1% adapter contamination
-        pct_by_pos_by_sample = {
-            k: d for k, d in pct_by_pos_by_sample.items() if max(pct_by_pos_by_sample[k].values()) >= 0.1
-        }
+        low_adapter_series = sorted(
+            k for k, vals in pct_by_pos_by_sample.items() if not vals or max(vals.values()) < 0.1
+        )
+        low_adapter_series_set = set(low_adapter_series)
+        pct_by_pos_by_sample = {k: d for k, d in pct_by_pos_by_sample.items() if k not in low_adapter_series_set}
 
         # Convert status dict format
-        status_dict: Dict[Literal["pass", "warn", "fail"], List[str]] = {"pass": [], "warn": [], "fail": []}
+        status_dict: dict[Literal["pass", "warn", "fail"], list[str]] = {"pass": [], "warn": [], "fail": []}
         for s_name, status in section_statuses.items():
             if status in status_dict:
                 status_dict[status].append(s_name)
 
         status_checks = getattr(config, "fastqc_config", {}).get("status_checks", True)
-        pconfig: Dict[str, Any] = {
+        pconfig: dict[str, Any] = {
             "id": f"{self.anchor}_adapter_content_plot",
             "title": "FastQC: Adapter Content",
             "ylab": "% of Sequences",
@@ -1352,11 +1383,21 @@ class MultiqcModule(BaseMultiqcModule):
             ]
 
         plot = None
-        content = ""
+        alerts: SectionAlert | None = None
+        if low_adapter_series:
+            n = len(low_adapter_series)
+            low_adapter_samples = sorted({series.rsplit(" - ", 1)[0] for series in low_adapter_series})
+            n_samples = len(low_adapter_samples)
+            alerts = SectionAlert(
+                message=(
+                    f"**{n} sample-adapter combination{'s' if n != 1 else ''}** with less than 0.1% "
+                    f"adapter contamination hidden from this plot across {n_samples} sample"
+                    f"{'s' if n_samples != 1 else ''}."
+                ),
+                affected_samples=low_adapter_samples,
+            )
         if len(pct_by_pos_by_sample) > 0:
             plot = linegraph.plot(pct_by_pos_by_sample, pconfig)
-        else:
-            content = '<div class="alert alert-info">No samples found with any adapter contamination > 0.1%</div>'
 
         # Note - colours are messy as we've added adapter names here. Not
         # possible to break down pass / warn / fail for each adapter, which
@@ -1383,23 +1424,23 @@ class MultiqcModule(BaseMultiqcModule):
             increase as the read length goes on._
             """,
             plot=plot,
-            content=content,
+            alerts=alerts,
             statuses=status_dict if section_statuses else None,
         )
 
     def status_heatmap(self):
         """Heatmap showing all statuses for every sample"""
         status_numbers = {"pass": 1, "warn": 0.5, "fail": 0.25}
-        data: List[List[int]] = []
-        s_names: List[str] = []
-        status_cats: Dict[str, str] = {}
+        data: list[list[int]] = []
+        s_names: list[str] = []
+        status_cats: dict[str, str] = {}
         for s_name in sorted(self.fastqc_data.keys()):
             s_names.append(str(s_name))
-            for status_cat, _ in self.fastqc_data[s_name]["statuses"].items():
+            for status_cat in self.fastqc_data[s_name]["statuses"]:
                 if status_cat not in status_cats:
                     status_cats[status_cat] = status_cat.replace("_", " ").title().replace("Gc", "GC")
         for s_name in s_names:
-            row: List[int] = []
+            row: list[int] = []
             for status_cat in status_cats:
                 try:
                     row.append(status_numbers[self.fastqc_data[s_name]["statuses"][status_cat]])
@@ -1457,17 +1498,17 @@ class MultiqcModule(BaseMultiqcModule):
             plot=heatmap.plot(data, xcats=list(status_cats.values()), ycats=s_names, pconfig=pconfig),
         )
 
-    def get_status_cols(self, section: str) -> Dict[str, str]:
+    def get_status_cols(self, section: str) -> dict[str, str]:
         """Helper function - returns a list of colours according to the FastQC
         status of this module for each sample."""
-        colours: Dict[str, str] = dict()
+        colours: dict[str, str] = {}
         for s_name in self.fastqc_data:
             status = self.fastqc_data[s_name]["statuses"].get(section, "default")
             colours[s_name] = self.status_colours[status]
         return colours
 
 
-def _range_bp_to_num(bp: Union[str, int], method: Literal["start", "median", "mean"]) -> Union[int, float]:
+def _range_bp_to_num(bp: str | int, method: Literal["start", "median", "mean"]) -> int | float:
     """
     Helper function - FastQC often gives base pair ranges (e.g. 10-15) which are not helpful when plotting.
     This function returns either the median or the start of the interval. If not a range, just returns the int.

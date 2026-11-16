@@ -3,8 +3,6 @@ MultiQC submodule to parse output from Picard AlignmentSummaryMetrics
 """
 
 import logging
-from collections import OrderedDict
-from typing import Dict
 
 from multiqc.modules.picard import util
 from multiqc.plots import bargraph
@@ -17,7 +15,7 @@ log = logging.getLogger(__name__)
 def parse_reports(module):
     """Find Picard AlignmentSummaryMetrics reports and parse their data"""
 
-    data_by_sample: Dict[str, Dict] = dict()
+    data_by_sample: dict[str, dict] = {}
 
     # Go through logs and find Metrics
     for f in module.find_log_files("picard/alignment_metrics", filehandles=True):
@@ -45,7 +43,7 @@ def parse_reports(module):
             ):
                 if s_name in data_by_sample:
                     log.debug(f"Duplicate sample name found in {f['fn']}! Overwriting: {s_name}")
-                data_by_sample[s_name] = dict()
+                data_by_sample[s_name] = {}
                 module.add_data_source(f, s_name, section="AlignmentSummaryMetrics")
                 keys = f["f"].readline().strip("\n").split("\t")
 
@@ -89,13 +87,13 @@ def parse_reports(module):
     }
     for s_name in data_by_sample:
         if s_name not in module.general_stats_data:
-            module.general_stats_data[s_name] = dict()
+            module.general_stats_data[s_name] = {}
         module.general_stats_data[s_name].update(data_by_sample[s_name])
 
     # Make the bar plot of alignment read count + # aligned bases
-    pdata: Dict[str, Dict] = dict()
-    for s_name in data_by_sample.keys():
-        pdata[s_name] = dict()
+    pdata: dict[str, dict] = {}
+    for s_name in data_by_sample:
+        pdata[s_name] = {}
         # Picard reports both reads for PE data. Divide it by two as most people will
         # expect # clusters
         if data_by_sample[s_name]["CATEGORY"] == "PAIR":
@@ -106,7 +104,7 @@ def parse_reports(module):
             pdata[s_name]["aligned_reads"] = data_by_sample[s_name]["PF_READS_ALIGNED"]
         pdata[s_name]["unaligned_reads"] = pdata[s_name]["total_reads"] - pdata[s_name]["aligned_reads"]
 
-    keys = [OrderedDict(), OrderedDict()]
+    keys = [{}, {}]
     keys[0]["aligned_reads"] = {"name": "Aligned Reads"}
     keys[0]["unaligned_reads"] = {"name": "Unaligned Reads"}
     keys[1]["PF_ALIGNED_BASES"] = {"name": "Aligned Bases"}

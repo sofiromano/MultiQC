@@ -1,4 +1,5 @@
 import logging
+import re
 
 from multiqc import config
 from multiqc.base_module import BaseMultiqcModule, ModuleNoSamplesFound
@@ -23,16 +24,18 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="RNA-SeQC",
             anchor="rna_seqc",
             href="https://github.com/getzlab/rnaseqc",
             info="RNA-Seq metrics for quality control and process optimization",
             doi=["10.1093/bioinformatics/btab135", "10.1093/bioinformatics/bts196"],
+            license="BSD 3-Clause License",
+            license_url="https://github.com/getzlab/rnaseqc/blob/master/LICENSE",
         )
 
         # Parse metrics from RNA-SeQC v1
-        self.rna_seqc_metrics = dict()
+        self.rna_seqc_metrics = {}
         for f in self.find_log_files("rna_seqc/metrics_v1", filehandles=True):
             self.parse_metrics_rnaseqc_v1(f)
             self.add_data_source(f, section="v1")
@@ -46,9 +49,9 @@ class MultiqcModule(BaseMultiqcModule):
         self.rna_seqc_metrics = self.ignore_samples(self.rna_seqc_metrics)
 
         # Parse normalised coverage information.
-        self.rna_seqc_norm_high_cov = dict()
-        self.rna_seqc_norm_medium_cov = dict()
-        self.rna_seqc_norm_low_cov = dict()
+        self.rna_seqc_norm_high_cov = {}
+        self.rna_seqc_norm_medium_cov = {}
+        self.rna_seqc_norm_low_cov = {}
         for f in self.find_log_files("rna_seqc/coverage"):
             self.parse_coverage(f)
         self.rna_seqc_norm_high_cov = self.ignore_samples(self.rna_seqc_norm_high_cov)
@@ -77,9 +80,9 @@ class MultiqcModule(BaseMultiqcModule):
 
         log.info(f"Found {num_found} samples")
 
-        # Superfluous function call to confirm that it is used in this module
-        # Replace None with actual version if it is available
-        self.add_software_version(None)
+        # Parse version from HTML reports
+        for f in self.find_log_files("rna_seqc/html"):
+            self.parse_rnaseqc_html(f)
 
         # Write metrics to a file
         self.write_data_file(self.rna_seqc_metrics, "multiqc_rna_seqc")
@@ -103,7 +106,7 @@ class MultiqcModule(BaseMultiqcModule):
                 headers = s
             else:
                 s_name = s[headers.index("Sample")]
-                data = dict()
+                data = {}
                 for idx, h in enumerate(headers):
                     try:
                         data[h] = float(s[idx])
@@ -138,7 +141,7 @@ class MultiqcModule(BaseMultiqcModule):
 
     def parse_coverage(self, f):
         """Parse the RNA-SeQC Normalised Coverage Files"""
-        data = dict()
+        data = {}
         s_names = None
         j = 1
         for line in f["f"].splitlines():
@@ -146,7 +149,7 @@ class MultiqcModule(BaseMultiqcModule):
             if s_names is None:
                 s_names = [self.clean_s_name(s_name, f) for s_name in s]
                 for s_name in s_names:
-                    data[s_name] = dict()
+                    data[s_name] = {}
             else:
                 for i, v in enumerate(s):
                     data[s_names[i]][j] = float(v)
@@ -161,7 +164,7 @@ class MultiqcModule(BaseMultiqcModule):
     def parse_correlation(self, f):
         """Parse RNA-SeQC correlation matrices"""
         s_names = None
-        data = list()
+        data = []
         for line in f["f"].splitlines():
             s = line.strip().split("\t")
             if s_names is None:
@@ -170,8 +173,8 @@ class MultiqcModule(BaseMultiqcModule):
                 data.append([float(val) for val in s[1:]])
 
         # Filter for ignored sample names
-        filtered_s_names = list()
-        filtered_data = list()
+        filtered_s_names = []
+        filtered_data = []
         for idx, s_name in enumerate(s_names):
             s_name = self.clean_s_name(s_name, f)
             if not self.is_ignore_sample(s_name):
@@ -352,8 +355,8 @@ class MultiqcModule(BaseMultiqcModule):
     def coverage_lineplot(self):
         """Make HTML for coverage line plots"""
         # Add line graph to section
-        data = list()
-        data_labels = list()
+        data = []
+        data_labels = []
         if len(self.rna_seqc_norm_high_cov) > 0:
             data.append(self.rna_seqc_norm_high_cov)
             data_labels.append({"name": "High Expressed"})
@@ -405,7 +408,7 @@ class MultiqcModule(BaseMultiqcModule):
             "rRNA Reads",
             "Unique Mapping, Vendor QC Passed Reads",
         ]
-        keys = dict()
+        keys = {}
         for col in columns:
             keys[col] = {
                 "title": col,
@@ -420,3 +423,9 @@ class MultiqcModule(BaseMultiqcModule):
             helptext="Note that many of these statistics are only available from RNA-SeQC v2.x",
             plot=violin.plot(self.rna_seqc_metrics, keys, pconfig),
         )
+
+    def parse_rnaseqc_html(self, f):
+        """Parse RNA-SeQC HTML reports to extract version information."""
+        match = re.search(r"RNA-SeQC</a>\s*v(\d+\.\d+[\.\d]*)", f["f"])
+        if match:
+            self.add_software_version(match.group(1))

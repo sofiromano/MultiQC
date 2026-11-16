@@ -2,6 +2,7 @@ import logging
 
 from multiqc.base_module import BaseMultiqcModule
 from multiqc.plots import linegraph
+from multiqc.types import SectionAlert
 
 from .util import average_pos_from_size
 
@@ -26,14 +27,14 @@ class DragenReadMetrics(BaseMultiqcModule):
     def per_seq_quality_plot(self):
         """Create the HTML for the per sequence quality score plot"""
 
-        data = dict()
+        data = {}
         GROUP = "READ MEAN QUALITY"
         MAX_QV = 64
         max_non_zero = 0
         for s_name in sorted(self.dragen_fastqc_data):
             for mate in sorted(self.dragen_fastqc_data[s_name]):
                 r_name = f"{s_name}_{mate}"
-                data[r_name] = dict()
+                data[r_name] = {}
                 group_data = self.dragen_fastqc_data[s_name][mate][GROUP]
                 for qv in range(MAX_QV):
                     metric = f"Q{qv} Reads"
@@ -42,13 +43,13 @@ class DragenReadMetrics(BaseMultiqcModule):
                         max_non_zero = max(qv, max_non_zero)
                     data[r_name][qv] = count
 
-        for r_name in data:
+        for r_name, read_data in data.items():
             for qv in range(max_non_zero + 2, MAX_QV):
-                del data[r_name][qv]
+                del read_data[qv]
 
         if len(data) == 0:
             log.debug("per_seq_quality not found in DRAGEN FastQC reports")
-            return None
+            return
 
         pconfig = {
             "id": "dragenqc_per_sequence_quality_scores_plot",
@@ -83,15 +84,15 @@ class DragenReadMetrics(BaseMultiqcModule):
     def seq_length_dist_plot(self):
         """Create the HTML for the Sequence Length Distribution plot"""
 
-        data = dict()
+        data = {}
         seq_lengths = set()
         multiple_lenths = False
-        avg_to_range = dict()
+        avg_to_range = {}
         GROUP = "READ LENGTHS"
         for s_name in sorted(self.dragen_fastqc_data):
             for mate in sorted(self.dragen_fastqc_data[s_name]):
                 r_name = f"{s_name}_{mate}"
-                data[r_name] = dict()
+                data[r_name] = {}
 
                 group_data = self.dragen_fastqc_data[s_name][mate][GROUP]
                 for metric, value in group_data.items():
@@ -100,24 +101,25 @@ class DragenReadMetrics(BaseMultiqcModule):
                         data[r_name][avg_pos] = value
                         avg_to_range[avg_pos] = metric.split("bp")[0]
 
-                seq_lengths.update([avg_to_range[k] for k in data[r_name].keys()])
+                seq_lengths.update([avg_to_range[k] for k in data[r_name]])
 
                 if len(set(data[r_name].keys())) > 1:
                     multiple_lenths = True
 
         if len(data) == 0:
             log.debug("sequence_length_distribution not found in FastQC reports")
-            return None
+            return
 
         if not multiple_lenths:
             lengths = "bp , ".join([str(line) for line in list(seq_lengths)])
             desc = f"All samples have sequences within a single length bin ({lengths}bp)."
             if len(seq_lengths) > 1:
                 desc += ' See the <a href="#general_stats">General Statistics Table</a>.'
+            # Alert-only sections still render, so users see why the plot was skipped.
             self.add_section(
                 name="Sequence Length Distribution",
                 anchor="dragenqc_sequence_length_distribution",
-                description=f'<div class="alert alert-info">{desc}</div>',
+                alerts=SectionAlert(message=desc),
             )
         else:
             pconfig = {

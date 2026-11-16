@@ -2,12 +2,12 @@
 
 import logging
 import re
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from csv import DictReader
 from itertools import chain, groupby
 
 from multiqc import config
-from multiqc.plots import table, heatmap
+from multiqc.plots import heatmap, table
 from multiqc.utils.util_functions import strtobool
 
 # Initialize the logger
@@ -37,7 +37,7 @@ def parse_reports(module):
     does pairwise comparisons between samples at the level selected by `--CROSSCHECK_BY`.
     """
 
-    row_by_number = dict()
+    row_by_number = {}
     found_reports = []
 
     # Go through logs and find Metrics
@@ -60,7 +60,7 @@ def parse_reports(module):
         if not lines:
             continue
         found_reports.append(f["s_name"])
-        for row_number, row in lines:
+        for row_number_in_lines, row in lines:
             # Clean the sample names
             row["LEFT_SAMPLE"] = module.clean_s_name(row["LEFT_SAMPLE"], f)
             row["LEFT_GROUP_VALUE"] = module.clean_s_name(row["LEFT_GROUP_VALUE"], f)
@@ -72,7 +72,7 @@ def parse_reports(module):
             # Set the cli options of interest for this file
             row["LOD_THRESHOLD"] = lod_threshold
             row["TUMOR_AWARENESS"] = tumor_awareness
-            row_by_number[row_number] = row
+            row_by_number[row_number_in_lines] = row
 
             try:
                 row["LOD_SCORE"] = float(row["LOD_SCORE"])
@@ -103,7 +103,7 @@ def parse_reports(module):
     module.write_data_file(row_by_number, f"{module.anchor}_crosscheckfingerprints")
 
     # Add a per-sample table
-    status_by_sample = dict()
+    status_by_sample = {}
     sorted_by_left_sample = sorted(row_by_number.values(), key=lambda r: r["LEFT_SAMPLE"])
     for left_sample, values in groupby(sorted_by_left_sample, key=lambda r: r["LEFT_SAMPLE"]):
         values = list(values)
@@ -331,7 +331,7 @@ def _get_table_headers(data_by_sample):
             "RIGHT_GROUP_VALUE",
         ] + table_cols
 
-    headers = OrderedDict()
+    headers = {}
     for h in FIELD_DESCRIPTIONS:
         # Skip anything not set to visible
         if h not in table_cols:

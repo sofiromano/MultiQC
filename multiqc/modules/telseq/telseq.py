@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 
 class MultiqcModule(BaseMultiqcModule):
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="telseq",
             anchor="telseq",
             href="https://github.com/zd1/telseq",
@@ -17,10 +17,12 @@ class MultiqcModule(BaseMultiqcModule):
             TelSeq measures average telomere length from whole genome or exome shotgun sequence data.
             """,
             doi="10.1093/nar/gku181",
+            license="GNU General Public License v3.0",
+            license_url="https://github.com/zd1/telseq/blob/master/LICENSE",
         )
 
         # Find and load any telseq reports
-        self.telseq_data = dict()
+        self.telseq_data = {}
 
         # Parse the output files
         self.parse_telseq_data()

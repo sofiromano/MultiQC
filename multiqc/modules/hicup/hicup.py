@@ -1,4 +1,5 @@
 import logging
+import re
 
 from multiqc import config
 from multiqc.base_module import BaseMultiqcModule, ModuleNoSamplesFound
@@ -9,16 +10,18 @@ log = logging.getLogger(__name__)
 
 class MultiqcModule(BaseMultiqcModule):
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="HiCUP",
             anchor="hicup",
             href="http://www.bioinformatics.babraham.ac.uk/projects/hicup/",
             info="Mapping and quality control on Hi-C data.",
             doi="10.12688/f1000research.7334.1",
+            license="GNU General Public License v3.0",
+            license_url="https://github.com/StevenWingett/HiCUP/blob/master/LICENSE.txt",
         )
 
         # Find and load any HiCUP summary reports
-        self.hicup_data = dict()
+        self.hicup_data = {}
         for f in self.find_log_files("hicup"):
             self.parse_hicup_logs(f)
 
@@ -30,9 +33,9 @@ class MultiqcModule(BaseMultiqcModule):
 
         log.info(f"Found {len(self.hicup_data)} reports")
 
-        # Superfluous function call to confirm that it is used in this module
-        # Replace None with actual version if it is available
-        self.add_software_version(None)
+        # Parse version from HTML reports
+        for f in self.find_log_files("hicup/html"):
+            self.parse_hicup_html(f)
 
         # Write parsed data to a file
         self.write_data_file(self.hicup_data, "multiqc_hicup")
@@ -60,19 +63,18 @@ class MultiqcModule(BaseMultiqcModule):
     def parse_hicup_logs(self, f):
         """Parse a HiCUP summary report"""
         if not f["fn"].endswith(".txt"):
-            return None
+            return
         header = []
         lines = f["f"].splitlines()
         for line in lines:
             s = line.split("\t")
             if len(header) == 0:
                 if s[0] != "File":
-                    return None
+                    return
                 header = s[1:]
             else:
                 s_name = self.clean_s_name(s[0], f)
-                if s_name.startswith("HiCUP_output/"):
-                    s_name = s_name[13:]
+                s_name = s_name.removeprefix("HiCUP_output/")
                 parsed_data = {}
                 for idx, num in enumerate(s[1:]):
                     try:
@@ -262,3 +264,15 @@ class MultiqcModule(BaseMultiqcModule):
         }
 
         return bargraph.plot(self.hicup_data, keys, config)
+
+    def parse_hicup_html(self, f):
+        """Parse HiCUP HTML reports to extract version information."""
+        match = re.search(r"HiCUP.*?\((\d+\.\d+[\.\d]*)\)", f["f"])
+        if match:
+            version = match.group(1)
+            # Try to derive sample name from HTML filename
+            # HTML files are named like: Sample-1.A002.C8DRAANXX.s_2.r_1_2.HiCUP_summary_report.html
+            suffix = ".HiCUP_summary_report.html"
+            base_name = f["fn"].removesuffix(suffix)
+            s_name = self.clean_s_name(base_name, f)
+            self.add_software_version(version, s_name)

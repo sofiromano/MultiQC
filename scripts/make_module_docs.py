@@ -7,14 +7,14 @@ Usage:
 """
 
 import json
-from typing import Dict
+import subprocess
+from pathlib import Path
+from textwrap import dedent
+
 import yaml
 from markdownify import markdownify
-from pathlib import Path
-from textwrap import dedent, indent
-import subprocess
 
-from multiqc import config, report, BaseMultiqcModule
+from multiqc import BaseMultiqcModule, config, report
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
     OUTPUT_PATH = Path("docs")
 
     # Load search patterns
-    sp_by_mod: Dict[str, Dict] = dict()
+    sp_by_mod: dict[str, dict] = {}
     with (Path(config.MODULE_DIR) / "search_patterns.yaml").open() as f:
         for k, v in yaml.safe_load(f).items():
             mod_id = k.split("/")[0]
@@ -68,12 +68,27 @@ def main():
         else:
             extra = ""
 
+        info_plain = markdownify(module.info).strip()
+
+        # Metadata lines shown in the note block: homepage link(s), DOI(s) and license.
+        # The license name (e.g. "MIT License") is self-describing, so no "License:" prefix.
+        meta_parts = []
+        if module.href:
+            meta_parts.append(", ".join(f"[{href}]({href})" for href in module.href))
+        if module.doi:
+            meta_parts.append("DOI: " + ", ".join(f"[{doi}](https://doi.org/{doi})" for doi in module.doi))
+        if module.license:
+            if module.license_url:
+                meta_parts.append(f"[{module.license}]({module.license_url})")
+            else:
+                meta_parts.append(module.license)
+        note_meta = "\n\n".join(meta_parts)
+
         text = f"""\
 ---
 title: {module.name}
 displayed_sidebar: multiqcSidebar
-description: >
-{indent(module.info, "    ")}
+description: "{info_plain}"
 ---
 
 <!--
@@ -86,9 +101,9 @@ File path for the source of this content: multiqc/modules/{mod_id}/{mod_id}.py
 -->
 
 :::note
-{module.info}
+{info_plain}
 
-{", ".join([f"[{href}]({href})" for href in module.href])}
+{note_meta}
 :::
 
 {extra}{dedent(docstring)}
@@ -107,7 +122,7 @@ File path for the source of this content: multiqc/modules/{mod_id}/{mod_id}.py
         module_md_path = OUTPUT_PATH / "markdown/modules" / f"{mod_id}.md"
         module_md_path.parent.mkdir(parents=True, exist_ok=True)
         with module_md_path.open("w") as fh:
-            fh.write(text)
+            fh.write(text.rstrip() + "\n")
         print(f"Generated {module_md_path}")
 
     mdx_path = OUTPUT_PATH / "markdown/modules.mdx"
@@ -137,15 +152,10 @@ If you would like another tool to to be supported, please [open an issue](https:
 import MultiqcModules from "@site/src/components/MultiqcModules";
 
 <MultiqcModules
-modules={{{str(json.dumps(modules_data))}}}
+modules={{{json.dumps(modules_data)!s}}}
 />
-
-    """
+"""
         )
-
-    # Format markdown files
-    subprocess.run(["npx", "prettier", "--write", "docs/markdown/modules/*.md"], check=True)
-    subprocess.run(["npx", "prettier", "--write", "docs/markdown/modules.mdx"], check=True)
 
 
 if __name__ == "__main__":

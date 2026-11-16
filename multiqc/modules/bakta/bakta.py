@@ -14,16 +14,18 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="Bakta",
             anchor="bakta",
             href="https://github.com/oschwengers/bakta",
             info="Rapid & standardized annotation of bacterial genomes, MAGs & plasmids",
             doi="10.1099/mgen.0.000685",
+            license="GNU General Public License v3.0",
+            license_url="https://github.com/oschwengers/bakta/blob/main/LICENSE",
         )
 
         # Parse logs (txt files)
-        self.bakta = dict()
+        self.bakta = {}
         for f in self.find_log_files("bakta"):
             self.bakta[f["s_name"]] = self.parse_bakta(f)
             self.add_data_source(f)

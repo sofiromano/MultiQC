@@ -10,20 +10,22 @@ log = logging.getLogger(__name__)
 class MultiqcModule(BaseMultiqcModule):
     def __init__(self):
         """MultiQC module for processing som.py output"""
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="som.py",
             anchor="sompy",
             href="https://github.com/Illumina/hap.py/blob/master/doc/sompy.md",
             info=("Benchmarks somatic variant calls against gold standard truth datasets."),
             # No publication / DOI // doi=
+            license="BSD 2-Clause License",
+            license_url="https://github.com/Illumina/hap.py/blob/master/LICENSE.txt",
         )
 
         self.add_software_version(None)
 
         self.sompy_raw_sample_names = set()
-        self.sompy_combined_data = dict()
-        self.sompy_indel_data = dict()
-        self.sompy_snv_data = dict()
+        self.sompy_combined_data = {}
+        self.sompy_indel_data = {}
+        self.sompy_snv_data = {}
 
         for f in self.find_log_files("sompy"):
             self.parse_file(f)

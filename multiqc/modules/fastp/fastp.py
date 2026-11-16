@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from collections import Counter, defaultdict
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from multiqc import config
 from multiqc.base_module import BaseMultiqcModule, ModuleNoSamplesFound
@@ -14,6 +14,10 @@ log = logging.getLogger(__name__)
 
 class MultiqcModule(BaseMultiqcModule):
     """
+    The module also supports [fasterp](https://github.com/drbh/fasterp), a Rust reimplementation
+    of fastp that produces identical JSON output. When a `fasterp_version` field is found in
+    the summary, the software version is tracked separately as fasterp.
+
     By default, the module generates the sample names based on the `--report_title` / `-R`
     option in the fastp command line (if present), or the input FastQ file names if not.
 
@@ -30,7 +34,7 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="fastp",
             anchor="fastp",
             href="https://github.com/OpenGene/fastp",
@@ -42,9 +46,11 @@ class MultiqcModule(BaseMultiqcModule):
             variety of parameters including quality scores, length, as well as the presence of adapters, polyG,
             or polyX tailing.""",
             doi="10.1093/bioinformatics/bty560",
+            license="MIT License",
+            license_url="https://github.com/OpenGene/fastp/blob/master/LICENSE",
         )
 
-        data_by_sample = dict()
+        data_by_sample = {}
         for f in self.find_log_files("fastp", filehandles=True):
             s_name, parsed_json = self.parse_fastp_log(f)
             if not s_name:
@@ -60,14 +66,14 @@ class MultiqcModule(BaseMultiqcModule):
         log.info(f"Found {len(data_by_sample)} reports")
 
         # Find and load any fastp reports
-        self.fastp_data = dict()
-        self.fastp_duplication_plotdata = dict()
-        self.fastp_insert_size_data = dict()
-        self.fastp_all_data = dict()
-        self.fastp_qual_plotdata = dict()
-        self.fastp_gc_content_data = dict()
-        self.fastp_n_content_data = dict()
-        self.fastp_overrepresented_sequences = dict()
+        self.fastp_data = {}
+        self.fastp_duplication_plotdata = {}
+        self.fastp_insert_size_data = {}
+        self.fastp_all_data = {}
+        self.fastp_qual_plotdata = {}
+        self.fastp_gc_content_data = {}
+        self.fastp_n_content_data = {}
+        self.fastp_overrepresented_sequences = {}
         for k in [
             "read1_before_filtering",
             "read2_before_filtering",
@@ -75,10 +81,10 @@ class MultiqcModule(BaseMultiqcModule):
             "read2_after_filtering",
             "merged_and_filtered",
         ]:
-            self.fastp_qual_plotdata[k] = dict()
-            self.fastp_gc_content_data[k] = dict()
-            self.fastp_n_content_data[k] = dict()
-            self.fastp_overrepresented_sequences[k] = dict()
+            self.fastp_qual_plotdata[k] = {}
+            self.fastp_gc_content_data[k] = {}
+            self.fastp_n_content_data[k] = {}
+            self.fastp_overrepresented_sequences[k] = {}
         for s_name, parsed_json in data_by_sample.items():
             self.process_parsed_data(parsed_json, s_name)
 
@@ -167,7 +173,7 @@ class MultiqcModule(BaseMultiqcModule):
             plot=self.fastp_overrepresented_sequences_plot(),
         )
 
-    def parse_fastp_log(self, f) -> Tuple[Optional[str], Dict]:
+    def parse_fastp_log(self, f) -> tuple[str | None, dict]:
         """Parse the JSON output from fastp and save the summary statistics"""
         try:
             parsed_json = json.load(f["f"])
@@ -239,7 +245,7 @@ class MultiqcModule(BaseMultiqcModule):
         self.add_data_source(f, s_name)
         return s_name, parsed_json
 
-    def process_parsed_data(self, parsed_json: Dict, s_name: str):
+    def process_parsed_data(self, parsed_json: dict, s_name: str):
         """Process the JSON extracted from logs"""
 
         self.fastp_data[s_name] = {}
@@ -286,19 +292,41 @@ class MultiqcModule(BaseMultiqcModule):
 
         # Parse data required to calculate Pct reads surviving
         try:
-            self.fastp_data[s_name]["before_filtering_total_reads"] = float(
+            self.fastp_data[s_name]["before_filtering_total_reads"] = int(
                 parsed_json["summary"]["before_filtering"]["total_reads"]
             )
         except KeyError:
             log.debug(f"Could not find pre-filtering # reads: '{s_name}'")
 
         try:
-            self.fastp_data[s_name]["pct_surviving"] = (
+            self.fastp_data[s_name]["pct_surviving_reads"] = (
                 self.fastp_data[s_name]["filtering_result_passed_filter_reads"]
                 / self.fastp_data[s_name]["before_filtering_total_reads"]
             ) * 100.0
         except (KeyError, ZeroDivisionError) as e:
-            log.debug(f"Could not calculate 'pct_surviving' ({e.__class__.__name__}): {s_name}")
+            log.debug(f"Could not calculate 'pct_surviving_reads' ({e.__class__.__name__}): {s_name}")
+
+        try:
+            self.fastp_data[s_name]["before_filtering_total_bases"] = int(
+                parsed_json["summary"]["before_filtering"]["total_bases"]
+            )
+        except KeyError:
+            log.debug(f"Could not find pre-filtering # bases: '{s_name}'")
+
+        try:
+            self.fastp_data[s_name]["after_filtering_total_bases"] = int(
+                parsed_json["summary"]["after_filtering"]["total_bases"]
+            )
+        except KeyError:
+            log.debug(f"Could not find post-filtering # bases: '{s_name}'")
+
+        try:
+            self.fastp_data[s_name]["pct_surviving_bases"] = (
+                self.fastp_data[s_name]["after_filtering_total_bases"]
+                / self.fastp_data[s_name]["before_filtering_total_bases"]
+            ) * 100.0
+        except (KeyError, ZeroDivisionError) as e:
+            log.debug(f"Could not calculate 'pct_surviving_bases' ({e.__class__.__name__}): {s_name}")
 
         # Parse adapter_cutting
         try:
@@ -391,8 +419,9 @@ class MultiqcModule(BaseMultiqcModule):
         # Don't delete dicts with subkeys, messes up multi-panel plots
 
         # Add software version if available
-        # Note: this was added to fastp JSON output in v0.22, so it won't be available in older versions
-        if "fastp_version" in parsed_json["summary"]:
+        if "fasterp_version" in parsed_json["summary"]:
+            self.add_software_version(parsed_json["summary"]["fasterp_version"], s_name, software_name="fasterp")
+        elif "fastp_version" in parsed_json["summary"]:
             self.add_software_version(parsed_json["summary"]["fastp_version"], s_name)
 
     def fastp_general_stats_table(self, data_by_sample):
@@ -436,17 +465,30 @@ class MultiqcModule(BaseMultiqcModule):
                     "scale": "Blues",
                     "modify": lambda x: x * 100.0,
                 },
-                "pct_surviving": {
-                    "title": "% PF",
+                "pct_surviving_reads": {
+                    "title": "% PF (Reads)",
                     "description": "Percent reads passing filter",
                     "suffix": "%",
-                    "scale": "BuGn",
+                    "scale": "RdYlGn",
+                    "min": 0,
+                    "max": 100,
+                },
+                "pct_surviving_bases": {
+                    "title": "% PF (Bases)",
+                    "description": "Percent bases passing filter",
+                    "suffix": "%",
+                    "scale": "RdYlGn",
+                    "min": 0,
+                    "max": 100,
+                    "hidden": True,
                 },
                 "pct_adapter": {
                     "title": "% Adapter",
                     "description": "Percentage adapter-trimmed reads",
                     "suffix": "%",
                     "scale": "RdYlGn-rev",
+                    "min": 0,
+                    "max": 100,
                 },
                 "before_filtering_read1_mean_length": {
                     "title": "Mean R1 Length",
@@ -573,7 +615,7 @@ class MultiqcModule(BaseMultiqcModule):
         # Top overrepresented sequences across all samples
         top_n = getattr(config, "fastp_config", {}).get("top_overrepresented_sequences", 20)
         top_seqs = cnt_by_seq.most_common(top_n)
-        table_data: Dict[str, Dict[str, Any]] = {
+        table_data: dict[str, dict[str, Any]] = {
             seq: {
                 "sequence": seq,
                 "total_percent": pct_by_seq[seq],

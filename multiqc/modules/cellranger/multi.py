@@ -3,7 +3,6 @@
 import json
 import logging
 import re
-from typing import Dict, Tuple, List
 
 from multiqc import BaseMultiqcModule
 from multiqc.plots import table, linegraph
@@ -472,7 +471,7 @@ def parse_multi_html(module: BaseMultiqcModule):
     return len(general_data.data)
 
 
-def _get_column_colors(tab: str, section: str, version: str) -> Dict:
+def _get_column_colors(tab: str, section: str, version: str) -> dict:
     is_v7 = re.match(r"7\.[0-9]\.[0-9]", version)
     is_v8 = re.match(r"8\.[0-9]\.[0-9]", version)
     if not (is_v7 or is_v8):
@@ -598,8 +597,8 @@ def _get_column_colors(tab: str, section: str, version: str) -> Dict:
 
 
 def _parse_table(
-    table_root: Dict, color_dict: Dict[str, str], filter_with_color_dict: bool = True
-) -> Tuple[Dict, Dict]:
+    table_root: dict, color_dict: dict[str, str], filter_with_color_dict: bool = True
+) -> tuple[dict, dict]:
     if not table_root:
         return {}, {}
 
@@ -628,8 +627,8 @@ def _parse_table(
     return parsed_data, parsed_headers
 
 
-def _parse_all_alerts(sample_alert_list: List, library_alert_list: List):
-    def parse_alert_list(alert_list: List):
+def _parse_all_alerts(sample_alert_list: list, library_alert_list: list):
+    def parse_alert_list(alert_list: list):
         def modify(level: str):
             if level == "INFO":
                 return "PASS"
@@ -660,7 +659,7 @@ def _parse_all_alerts(sample_alert_list: List, library_alert_list: List):
     return total_alerts, total_headers
 
 
-def _parse_plot(data: Dict):
+def _parse_plot(data: dict):
     if not data:
         return None, None
     if ("plot" not in data) or ("data" not in data["plot"]):
@@ -676,7 +675,7 @@ def _parse_plot(data: Dict):
 
 
 def _build_gex_data(
-    data: Dict,
+    data: dict,
     sample_name: str,
     alerts: SectionData,
     cells_metrics: SectionData,
@@ -734,7 +733,7 @@ def _build_gex_data(
         log.debug("Could not find library_websummary/gex_tab/content/physical_library_metrics_table")
 
     try:
-        bc_plot_source: Dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
+        bc_plot_source: dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
         if bc_plot_source:
             bc_plot_data, bc_plot_headers = _parse_plot(bc_plot_source)
             if bc_plot_data:
@@ -743,7 +742,7 @@ def _build_gex_data(
         log.debug("Could not find library_websummary/gex_tab/content/barcode_rank_plot")
 
     try:
-        genes_plot_source: Dict = library_websummary.get("content", {}).get("median_genes_per_cell_plot", {})
+        genes_plot_source: dict = library_websummary.get("content", {}).get("median_genes_per_cell_plot", {})
         if genes_plot_source:
             genes_plot_data, genes_plot_headers = _parse_plot(genes_plot_source)
             if genes_plot_data:
@@ -752,7 +751,7 @@ def _build_gex_data(
         log.debug("Could not find library_websummary/gex_tab/content/median_genes_per_cell_plot")
 
     try:
-        sequencing_plot_source: Dict = library_websummary.get("content", {}).get("sequencing_saturation_plot", {})
+        sequencing_plot_source: dict = library_websummary.get("content", {}).get("sequencing_saturation_plot", {})
         if sequencing_plot_source:
             sequencing_plot_data, sequencing_plot_headers = _parse_plot(sequencing_plot_source)
             if sequencing_plot_data:
@@ -762,7 +761,7 @@ def _build_gex_data(
 
 
 def _build_vdj_t_data(
-    data: Dict,
+    data: dict,
     sample_name: str,
     alerts: SectionData,
     expression_metrics: SectionData,
@@ -807,7 +806,7 @@ def _build_vdj_t_data(
         log.debug("Could not find sample_websummary/vdj_t_tab/content/annotation_metrics_table")
 
     try:
-        bc_plot_source: Dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
+        bc_plot_source: dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
         if bc_plot_source:
             bc_plot_data, bc_plot_headers = _parse_plot(bc_plot_source)
             if bc_plot_data:
@@ -817,7 +816,7 @@ def _build_vdj_t_data(
 
 
 def _build_vdj_b_data(
-    data: Dict,
+    data: dict,
     sample_name: str,
     alerts: SectionData,
     expression_metrics: SectionData,
@@ -862,7 +861,7 @@ def _build_vdj_b_data(
         log.debug("Could not find sample_websummary/vdj_b_tab/content/annotation_metrics_table")
 
     try:
-        bc_plot_source: Dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
+        bc_plot_source: dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
         if bc_plot_source:
             bc_plot_data, bc_plot_headers = _parse_plot(bc_plot_source)
             if bc_plot_data:
@@ -872,7 +871,7 @@ def _build_vdj_b_data(
 
 
 def _build_antibody_data(
-    data: Dict,
+    data: dict,
     sample_name: str,
     alerts: SectionData,
     expression_mapping_metrics: SectionData,
@@ -905,7 +904,7 @@ def _build_antibody_data(
         log.debug("Could not find sample_websummary/antibody_tab/content/hero_metrics")
 
     try:
-        bc_plot_source: Dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
+        bc_plot_source: dict = library_websummary.get("content", {}).get("barcode_rank_plot", {})
         if bc_plot_source:
             bc_plot_data, bc_plot_headers = _parse_plot(bc_plot_source)
             if bc_plot_data:

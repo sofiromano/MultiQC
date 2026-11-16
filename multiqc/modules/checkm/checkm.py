@@ -19,12 +19,14 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="CheckM",
             anchor="checkm",
             href="https://github.com/Ecogenomics/CheckM",
             info="Estimates genome completeness and contamination based on the presence or absence of marker genes.",
             doi=["10.1101/gr.186072.114"],
+            license="GNU General Public License v3.0",
+            license_url="https://github.com/Ecogenomics/CheckM/blob/master/LICENSE",
         )
 
         data_by_sample = {}
@@ -129,7 +131,7 @@ class MultiqcModule(BaseMultiqcModule):
             return
 
         header = lines[0].strip()
-        if not header.startswith(("Bin Id")):
+        if not header.startswith("Bin Id"):
             log.warning(f"Unrecognized header in {f['fn']}: {header}")
             return
 
@@ -147,13 +149,13 @@ class MultiqcModule(BaseMultiqcModule):
 
         for line in lines[1:]:
             row = re.split(r"\t| {3,}", line.rstrip("\n"))
-            sname = row[0]
+            sname = self.clean_s_name(row[0], f)
             if sname in data_by_sample:
                 log.debug(f"Duplicate sample name found! Overwriting: {sname}")
             data_by_sample[sname] = {k: v for k, v in zip(column_names[1:], row[1:]) if v is not None}
 
     def mag_quality_table(self, data_by_sample):
-        lineages = list(set(d.get("Marker lineage") for d in data_by_sample.values()))
+        lineages = list({d.get("Marker lineage") for d in data_by_sample.values()})
         scale = mqc_colour.mqc_colour_scale("Dark2")
         lineages_colors = [{v: scale.get_colour(i, lighten=0.5)} for i, v in enumerate(lineages)]
         headers = {

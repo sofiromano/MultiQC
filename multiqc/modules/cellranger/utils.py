@@ -1,20 +1,20 @@
 import logging
-from typing import Dict, Union, List, Tuple, Any
+from typing import Any
 
 
 class SectionData:
-    data: Dict[str, Dict]
-    headers: Dict[str, Any]
+    data: dict[str, dict]
+    headers: dict[str, Any]
 
     def __init__(self):
-        self.data = dict()
-        self.headers = dict()
+        self.data = {}
+        self.headers = {}
 
-    def update(self, data: Dict[str, Dict], headers: Dict[str, Dict]):
+    def update(self, data: dict[str, dict], headers: dict[str, dict]):
         self.data.update(data)
         self.headers.update(headers)
 
-    def update_sample(self, data: Dict[str, Any], headers: Dict[str, Dict], sample: str):
+    def update_sample(self, data: dict[str, Any], headers: dict[str, dict], sample: str):
         if sample not in self.data:
             self.data[sample] = {}
         self.data[sample].update(data)
@@ -41,7 +41,7 @@ def update_dict(table, headers, rows_list, col_map, colours, namespace):
             try:
                 col_data = float(col_data)
             except ValueError:
-                col_data = col_data
+                pass  # leave col_data as the original string
 
             col_id = col_map[col_name]
             table[col_id] = col_data
@@ -84,27 +84,27 @@ def set_hidden_cols(headers, col_names):
     return headers
 
 
-def parse_bcknee_data(data, s_name, max_idx=1000) -> Dict[str, Dict[str, Union[int, str, float]]]:
+def parse_bcknee_data(data, s_name, max_idx=1000) -> dict[str, dict[str, int | str | float]]:
     """parse data for bc knee plot from dict"""
 
-    value_dict: Dict[str, Dict[str, Union[int, str, float]]] = dict()
+    value_dict: dict[str, dict[str, int | str | float]] = {}
     for idx, data_series in enumerate(data):
         if idx > max_idx:
             break
         if len(data_series["x"]) == 0:
             continue
         id = f"{s_name}_{data_series['name']}"
-        if id not in value_dict.keys():
-            value_dict[id] = dict()
+        if id not in value_dict:
+            value_dict[id] = {}
         value_dict[id].update(transform_data(data_series))
 
     return value_dict
 
 
-def transform_data(data: Dict[str, List]) -> Dict[str, Union[int, str, float]]:
+def transform_data(data: dict[str, list]) -> dict[str, int | str | float]:
     """Transform x:list,y:list data to a dict of x_val:y_val"""
 
-    value_dict = dict()
+    value_dict = {}
     for idx, row in enumerate(data["x"]):
         if row > 0 and data["y"][idx] > 0:
             value_dict[row] = data["y"][idx]
@@ -112,14 +112,14 @@ def transform_data(data: Dict[str, List]) -> Dict[str, Union[int, str, float]]:
     return value_dict
 
 
-def update_data_and_header(data: Dict, header: Dict, color_dict: Dict, logger: logging.Logger):
+def update_data_and_header(data: dict, header: dict, color_dict: dict, logger: logging.Logger):
     """Transform data and headers of a table"""
-    for key in data:
+    for key, raw_value in data.items():
         if key not in color_dict:
             logger.warning(f"Unexpected key {key} - applying defaults")
 
         new_header = {"scale": color_dict.get(key, "GnBu")}
-        value = data[key].replace(",", "")
+        value = raw_value.replace(",", "")
         if "%" in value:
             new_header.update({"suffix": "%", "max": 100, "min": 0})
             value = value.replace("%", "").strip()
@@ -133,11 +133,11 @@ def update_data_and_header(data: Dict, header: Dict, color_dict: Dict, logger: l
     return data, header
 
 
-def combine_data_and_headers(dictionaries: List[Tuple]):
+def combine_data_and_headers(dictionaries: list[tuple]):
     """Method to combine multiple data dictionaries and headers into one"""
 
-    ret_data: Dict[str, Dict] = {}
-    ret_headers: Dict[str, Any] = {}
+    ret_data: dict[str, dict] = {}
+    ret_headers: dict[str, Any] = {}
     for data, headers, cols in dictionaries:
         for sample in data:
             if sample not in ret_data:

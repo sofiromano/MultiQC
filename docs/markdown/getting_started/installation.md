@@ -12,7 +12,7 @@ If you're new to software packaging, this page can be a little overwhelming.
 If in doubt, a general rule is:
 
 - _Running MultiQC in a pipeline?_ &nbsp; Use [Docker](#docker) or [Singularity](#singularity).
-- _Running MultiQC locally?_ &nbsp; Use [Pip](#pip--pypi) or [Conda](#conda).
+- _Running MultiQC locally?_ &nbsp; Use [uv](#uv), [Pip](#pip--pypi), or [Conda](#conda).
 
 :::tip{title="Installation cheat sheet"}
 
@@ -21,6 +21,14 @@ Know what you're doing with this kind of thing? Here's a quick reference:
 <table><thead>
 <tr><th>Method</th><th>Command</th></tr>
 </thead><tbody><tr>
+<td>uv</td>
+<td>
+
+```bash
+uv tool install multiqc
+```
+
+</td></tr><tr>
 <td>Pip</td>
 <td>
 
@@ -29,19 +37,27 @@ pip install multiqc
 ```
 
 </td></tr><tr>
-<td>Pip (dev version)</td>
-<td>
-
-```bash
-pip install --upgrade --force-reinstall git+https://github.com/MultiQC/MultiQC.git
-```
-
-</td></tr><tr>
 <td>Conda</td>
 <td>
 
 ```bash
 conda install multiqc
+```
+
+</td></tr><tr>
+<td>uv (dev version)</td>
+<td>
+
+```bash
+uv tool install git+https://github.com/MultiQC/MultiQC.git
+```
+
+</td></tr><tr>
+<td>Pip (dev version)</td>
+<td>
+
+```bash
+pip install --upgrade --force-reinstall git+https://github.com/MultiQC/MultiQC.git
 ```
 
 </td></tr><tr>
@@ -61,7 +77,11 @@ docker run -t -v `pwd`:`pwd` -w `pwd` multiqc/multiqc multiqc .
 MultiQC is written in Python and needs a Python installation to run.
 
 To run MultiQC manually install, you'll typically install it into a local Python environment.
-MultiQC requires Python version 3.9 or above.
+MultiQC requires Python version 3.10 or above.
+
+:::tip
+If you use [uv](#uv) to install MultiQC, you don't need to install Python separately; uv automatically downloads and manages Python for you.
+:::
 
 ### System Python
 
@@ -71,10 +91,32 @@ Python comes installed on most operating systems. You can install MultiQC direct
 If you find yourself prepending `sudo` to any MultiQC commands, take a step back and think about Python virtual environments / conda instead.
 :::
 
+### Python with uv
+
+[uv](https://docs.astral.sh/uv/) is a fast Python package and project manager that can also install and manage Python versions.
+If you don't have Python installed, uv will automatically download it when needed, so no separate Python installation is required.
+
+To install uv:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+uv will automatically download a suitable Python version when you install or run a Python package.
+If you'd like to install a specific Python version explicitly, you can do so with:
+
+```bash
+uv python install 3.14
+```
+
 ### Python with Conda
 
 To see if you have python installed, run `python --version` on the command line.
-MultiQC needs Python version 3.9+.
+MultiQC needs Python version 3.10+.
 
 We recommend using virtual environments to manage your Python installation.
 Our favourite is _conda_, a cross-platform tool to manage Python environments.
@@ -108,6 +150,62 @@ python3 -m multiqc .
 
 There are a few different ways to install MultiQC into your local Python environment:
 
+### uv
+
+[uv](https://docs.astral.sh/uv/) is a fast Python package and project manager, written in Rust.
+It can replace pip, pip-tools, pipx, pyenv, and virtualenv in a single tool.
+uv automatically manages Python installations, so you don't need to install Python separately.
+
+The recommended way to install MultiQC with uv is as a tool:
+
+```bash
+uv tool install multiqc
+```
+
+This installs MultiQC into an isolated environment and adds the `multiqc` command to your PATH.
+You can then run `multiqc` directly:
+
+```bash
+multiqc .
+```
+
+Alternatively, you can run MultiQC without installing it permanently using `uvx` (an alias for `uv tool run`):
+
+```bash
+uvx multiqc .
+```
+
+To upgrade MultiQC:
+
+```bash
+uv tool upgrade multiqc
+```
+
+#### Development version
+
+If you would like the development version from GitHub instead:
+
+```bash
+uv tool install git+https://github.com/MultiQC/MultiQC.git
+```
+
+To update the dev version between releases, use `--reinstall`:
+
+```bash
+uv tool install --reinstall git+https://github.com/MultiQC/MultiQC.git
+```
+
+You can also run the dev version directly without installing, using `uvx`:
+
+```bash
+uvx --from git+https://github.com/MultiQC/MultiQC.git multiqc .
+```
+
+:::tip
+uv can also be used as a drop-in replacement for pip inside virtual environments.
+See the [uv documentation](https://docs.astral.sh/uv/) for more details.
+:::
+
 ### Conda
 
 MultiQC is available on [Bioconda](https://bioconda.github.io/).
@@ -134,7 +232,7 @@ Doing so will likely cause weird stuff to happen (such as only being able to ins
 
 ### Pip / PyPI
 
-This is the easiest way to install MultiQC. `pip` is the package manager for the Python Package Manager. It comes bundled with recent versions of Python,
+`pip` is the package manager for the Python Package Index. It comes bundled with recent versions of Python,
 otherwise you can find installation instructions [here](https://pip.pypa.io/en/stable/installation/).
 
 You can install MultiQC from [PyPI](https://pypi.python.org/pypi/multiqc) as follows:
@@ -170,12 +268,20 @@ MultiQC [is available on spack](https://packages.spack.io/package.html?name=py-m
 spack install py-multiqc
 ```
 
+### Nix
+
+MultiQC [is available in nixpkgs](https://search.nixos.org/packages?query=multiqc) as `multiqc`:
+
+```bash
+nix-shell -p multiqc
+```
+
 ### FreeBSD
 
 If you're using the [FreeBSD](https://www.freebsd.org/) operating system, you can install MultiQC via [FreeBSD ports](https://www.freebsd.org/ports/):
 
 ```bash
-pkg install py39-multiqc
+pkg install py312-multiqc
 ```
 
 This will install a prebuilt binary using only highly-portable
@@ -201,9 +307,17 @@ cd MultiQC
 pip install .
 ```
 
+Or, using uv:
+
+```bash
+git clone https://github.com/MultiQC/MultiQC.git
+cd MultiQC
+uv pip install .
+```
+
 This will fetch the latest development code. To update to the latest changes, use `git pull`.
 
-Use the `--editable` flag (`pip install -e .`) if you intend to develop the code locally.
+Use the `--editable` flag (`pip install -e .` or `uv pip install -e .`) if you intend to develop the code locally.
 This symlinks the source files so that you don't have to reinstall every time you edit a file.
 
 `git` not installed? No problem - just download the flat files:
@@ -214,12 +328,6 @@ unzip main.zip
 cd MultiQC-main
 pip install .
 ```
-
-### Nix
-
-If you're using the [nix package manager](https://nixos.org/download.html#download-nixm) with [flakes](https://nixos.wiki/wiki/Flakes) enabled, you can
-run `nix develop` in the cloned MultiQC repository to enter a shell
-with required dependencies. To build MultiQC, run `nix build`.
 
 ## MultiQC container images
 
@@ -357,6 +465,7 @@ the `multiqc.run()` function as follows:
 
 ```python
 import multiqc
+
 multiqc.run("/path/to/dir")
 ```
 

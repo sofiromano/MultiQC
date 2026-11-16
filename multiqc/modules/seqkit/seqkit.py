@@ -35,15 +35,17 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="SeqKit",
             anchor="seqkit",
             href="https://bioinf.shenwei.me/seqkit/",
             info="Cross-platform and ultrafast toolkit for FASTA/Q file manipulation.",
             doi="10.1371/journal.pone.0163962",
+            license="MIT License",
+            license_url="https://github.com/shenwei356/seqkit/blob/master/LICENSE",
         )
 
-        n = dict()
+        n = {}
 
         # Call submodule functions
         n["stats"] = parse_seqkit_stats(self)

@@ -1,5 +1,15 @@
 # Module Structure Templates
 
+Directory layout and class skeleton templates for new modules. Patterns
+for the code _inside_ a module (parsing, plots, alerts) live in
+[code-patterns.md](code-patterns.md).
+
+## Contents
+
+- Single-Tool Module — directory, `__init__.py`, `toolname.py` template
+- Multi-Subtool Module — directory, orchestrator, submodule parser, test file
+- Registration Files — `search_patterns.yaml` and `pyproject.toml` entries
+
 ## Single-Tool Module
 
 ### Directory Structure
@@ -22,6 +32,14 @@ __all__ = ["MultiqcModule"]
 ```
 
 ### toolname.py Template
+
+Per-part helpers (`_parse_log`, `_add_general_stats`, one method per section)
+keep `__init__` readable as a high-level outline. Avoid only the trivial
+single-statement wrappers. Access documented dict keys directly
+(`parsed["total_reads"]`) rather than `.get("total_reads", 0)` — a missing
+key indicates real format breakage and is more useful as a `KeyError` than
+silently produced zeros. Use human-readable titles (e.g. `"Total Counts"`,
+not the raw dict key `total_counts`) in any field a user will see.
 
 ```python
 """MultiQC module to parse output from ToolName"""
@@ -48,12 +66,16 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="ToolName",
             anchor="toolname",
             href="https://example.com/toolname",
             info="Brief description starting with capital letter.",
             doi="10.xxxx/journal.xxxxx",
+            # license/license_url: checked by CI (like doi). Use the tool's
+            # license, or None (with a comment) if unknown or proprietary.
+            license="MIT License",
+            license_url="https://opensource.org/license/mit",
         )
 
         self.toolname_data: Dict[str, Dict] = {}
@@ -61,7 +83,7 @@ class MultiqcModule(BaseMultiqcModule):
         for f in self.find_log_files("toolname"):
             parsed = self._parse_log(f)
             for s_name, data in parsed.items():
-                s_name = self.clean_s_name(s_name, f) # If needed
+                s_name = self.clean_s_name(s_name, f)  # If needed
                 if s_name in self.toolname_data:
                     log.debug(f"Duplicate sample name found! Overwriting: {s_name}")
                 self.add_data_source(f, s_name=s_name)
@@ -173,12 +195,16 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="ToolName",
             anchor="toolname",
             href="https://example.com/toolname",
             info="Toolkit for [description].",
             doi="10.xxxx/journal.xxxxx",
+            # license/license_url: checked by CI (like doi). Use the tool's
+            # license, or None (with a comment) if unknown or proprietary.
+            license="MIT License",
+            license_url="https://opensource.org/license/mit",
         )
 
         n = dict()
@@ -244,7 +270,7 @@ def parse_toolname_subtool1(module: BaseMultiqcModule) -> int:
     return len(data)
 
 
-def parse_report(file_content: str, fallback_name: Optional[str] = None) -> Dict[str, Dict]:
+def parse_report(file_content: str, fallback_sample_name: Optional[str] = None) -> Dict[str, Dict]:
     """Parse subtool1 output file."""
     parsed_data: Dict[str, Dict] = {}
     # Implementation here

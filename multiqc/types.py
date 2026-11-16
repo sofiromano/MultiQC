@@ -1,10 +1,11 @@
 import dataclasses
 import io
 from enum import Enum
-from typing import Generic, List, NewType, Optional, TypeVar, Union
+from typing import ClassVar, Generic, NewType, Optional, TypeVar, Union
 
-# Do not export typing.TypedDict: it doesn't support generics and will break Python 3.9
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+# typing.TypedDict only supports Generic from Python 3.11
 from typing_extensions import TypedDict
 
 Anchor = NewType("Anchor", str)
@@ -17,13 +18,26 @@ SampleName = NewType("SampleName", str)
 SampleGroup = NewType("SampleGroup", str)
 
 
+@dataclasses.dataclass
+class SoftwareVersionMetadata:
+    """
+    FAIR metadata about a software tool, shown alongside its version(s) in the
+    Software Versions section of the report: the software license and its
+    citation DOI(s).
+    """
+
+    license: str | None = None
+    license_url: str | None = None
+    doi: list[str] = dataclasses.field(default_factory=list)
+
+
 class FileDict(TypedDict):
     fn: str
     root: str
     sp_key: str
 
 
-FT = TypeVar("FT", bound=Union[str, io.IOBase, None])
+FT = TypeVar("FT", bound=str | io.IOBase | None)
 
 
 class LoadedFileDict(TypedDict, Generic[FT]):
@@ -76,13 +90,13 @@ class PlotType(Enum):
             return PlotType.SCATTER
         elif val in ["violin", "beeswarm", "violinplot", "violin_plot", "violin plot"]:
             return PlotType.VIOLIN
-        elif val in ["heatmap"]:
+        elif val == "heatmap":
             return PlotType.HEATMAP
-        elif val in ["table"]:
+        elif val == "table":
             return PlotType.TABLE
-        elif val in ["html"]:
+        elif val == "html":
             return PlotType.HTML
-        elif val in ["image"]:
+        elif val == "image":
             return PlotType.IMAGE
         elif val in ["generalstats", "general_stats", "general stats"]:
             return PlotType.GENERALSTATS
@@ -92,10 +106,26 @@ class PlotType(Enum):
 @dataclasses.dataclass
 class SampleNameMeta:
     original_name: SampleName
-    trimmed_name: Optional[SampleName] = None
-    trimmed_suffixes: List[str] = dataclasses.field(default_factory=list)
-    group: Optional[SampleGroup] = None
-    labels: List[str] = dataclasses.field(default_factory=list)
+    trimmed_name: SampleName | None = None
+    trimmed_suffixes: list[str] = dataclasses.field(default_factory=list)
+    group: SampleGroup | None = None
+    labels: list[str] = dataclasses.field(default_factory=list)
+
+
+class SectionAlert(BaseModel):
+    valid_levels: ClassVar[set[str]] = {"primary", "secondary", "success", "danger", "warning", "info", "light", "dark"}
+
+    message: str
+    level: str = "info"
+    affected_samples: list[str] = Field(default_factory=list)
+
+    @field_validator("level")
+    @classmethod
+    def validate_level(cls, level: str) -> str:
+        if level not in cls.valid_levels:
+            valid_levels = ", ".join(sorted(cls.valid_levels))
+            raise ValueError(f"Alert level must be one of: {valid_levels}")
+        return level
 
 
 class Section(BaseModel):
@@ -112,6 +142,7 @@ class Section(BaseModel):
     content: str = ""
     plot: str = ""
     print_section: bool = True
-    plot_anchor: Optional[Anchor] = None
+    plot_anchor: Anchor | None = None
     ai_summary: str = ""
     status_bar_html: str = ""
+    alerts: list[SectionAlert] = Field(default_factory=list)

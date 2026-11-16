@@ -1,4 +1,5 @@
 import logging
+
 from multiqc.plots import linegraph
 
 log = logging.getLogger(__name__)
@@ -6,7 +7,7 @@ log = logging.getLogger(__name__)
 
 def parse_reports(self):
     # To store the summary data
-    self.clusters = dict()
+    self.clusters = {}
 
     # Parse the output files
     parse_log_files(self)
@@ -51,7 +52,6 @@ def add_to_humid_section(self):
         "xlab": "Cluster size",
         "logswitch": True,
         "logswitch_active": True,
-        "hide_zero_cats": False,
     }
     self.add_section(
         name="Cluster statistics",

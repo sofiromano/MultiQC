@@ -22,7 +22,7 @@ class MultiqcModule(BaseMultiqcModule):
     """
 
     def __init__(self):
-        super(MultiqcModule, self).__init__(
+        super().__init__(
             name="SortMeRNA",
             anchor="sortmerna",
             href="http://bioinfo.lifl.fr/RNA/sortmerna/",
@@ -31,10 +31,12 @@ class MultiqcModule(BaseMultiqcModule):
             "of nucleotide sequences. The main application of SortMeRNA is filtering ribosomal RNA from "
             "metatranscriptomic data.",
             doi="10.1093/bioinformatics/bts611",
+            license="GNU General Public License v3.0",
+            license_url="https://github.com/biocore/sortmerna/blob/master/LICENSE.txt",
         )
 
         # Parse logs
-        self.sortmerna = dict()
+        self.sortmerna = {}
         for f in self.find_log_files("sortmerna", filehandles=True):
             self.parse_sortmerna(f)
             self.add_data_source(f)
@@ -83,7 +85,7 @@ class MultiqcModule(BaseMultiqcModule):
             if "Reads file" in line:
                 parts = re.split(r"[:=]", line)
                 s_name = self.clean_s_name(parts[-1], f)
-                self.sortmerna[s_name] = dict()
+                self.sortmerna[s_name] = {}
             if "Results:" in line and not post_results_start:  # old versions
                 post_results_start = True
             if "Total reads = " in line and not post_results_start:  # v4.2.0 onwards
