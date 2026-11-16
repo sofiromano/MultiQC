@@ -5,13 +5,13 @@ import logging
 import re
 
 from multiqc import BaseMultiqcModule
-from multiqc.plots import table, linegraph
 from multiqc.modules.cellranger.utils import (
-    set_hidden_cols,
     SectionData,
-    update_data_and_header,
     combine_data_and_headers,
+    set_hidden_cols,
+    update_data_and_header,
 )
+from multiqc.plots import linegraph, table
 
 # Initialise the logger
 log = logging.getLogger(__name__)
@@ -615,7 +615,7 @@ def _parse_table(
     # if filter_with_color_dict is True then the keys in the color dict are used as filters for columns we want to add
     if filter_with_color_dict:
         filtered_data, filtered_headers = {}, {}
-        for key in color_dict.keys():
+        for key in color_dict:
             if key in parsed_data and key in parsed_headers:
                 filtered_data[key] = parsed_data[key]
                 filtered_headers[key] = parsed_headers[key]
@@ -646,7 +646,7 @@ def _parse_all_alerts(sample_alert_list: list, library_alert_list: list):
     total_alerts, total_headers = (library_alerts, library_headers)
 
     # Careful dictionary update:
-    for sample_alert_key in sample_alerts.keys():
+    for sample_alert_key in sample_alerts:
         if sample_alert_key not in total_alerts:
             total_alerts[sample_alert_key] = sample_alerts[sample_alert_key]
             total_headers[sample_alert_key] = sample_headers[sample_alert_key]
