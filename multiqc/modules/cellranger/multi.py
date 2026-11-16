@@ -420,7 +420,7 @@ def parse_multi_html(module: BaseMultiqcModule):
             (
                 gex_cells_metrics.data,
                 gex_cells_metrics.headers,
-                ["Cells", "Mean reads per Cell", "Median reads per cell", "Median genes per cell"],
+                ["Cells", "Mean reads per cell", "Median reads per cell", "Median genes per cell"],
             ),
             (
                 gex_library_metrics_summary.data,
